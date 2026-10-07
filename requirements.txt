@@ -1,0 +1,13 @@
+# Antler Foods SEO Automation — MVP foundation dependencies.
+# Google API libraries are intentionally NOT included at this stage; the local
+# input pipeline is the MVP. They will be added only if/when the Google
+# Sheet/Doc/Drive pipeline is implemented (future phase).
+
+# Configuration
+python-dotenv==1.1.1
+
+# Browser automation
+playwright==1.56.0
+
+# Testing
+pytest==9.0.1
