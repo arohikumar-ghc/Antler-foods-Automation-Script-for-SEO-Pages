@@ -6,6 +6,7 @@ the real Sheet, finds the first pending row, reads its Google Doc, and produces
 SEOPage[]. READ-ONLY: no writeback. Run with:  pytest -m live
 """
 import os
+from pathlib import Path
 
 import pytest
 
@@ -26,8 +27,22 @@ def _require(name):
     return value
 
 
+def _require_key_file(name):
+    """Require the service-account key env var AND that the file exists.
+
+    Skips (rather than fails) when the key file is not present yet, so the live
+    test only runs when it can genuinely authenticate.
+    """
+    value = _require(name)
+    if not Path(value).exists():
+        pytest.skip(
+            f"{name}={value!r} does not exist; skipping live Google test"
+        )
+    return value
+
+
 def test_sheet_to_doc_to_pages():
-    key_file = _require("ANTLER_GOOGLE_SA_KEY_FILE")
+    key_file = _require_key_file("ANTLER_GOOGLE_SA_KEY_FILE")
     sheet_url = _require("ANTLER_GOOGLE_SHEET_URL")
 
     from antler_seo.input.google_auth import load_service_account_credentials
