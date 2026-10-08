@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 from antler_seo.models import SEOPage
 
@@ -34,13 +34,22 @@ class PageParseError:
 class ParseOutcome:
     """Result of parsing an input document.
 
+    Restaurant/tenant context lives here (batch level), NOT on individual
+    ``SEOPage`` objects: every page in one input document belongs to the same
+    restaurant, and the automation selects that restaurant once per run. The
+    restaurant name is carried dynamically from the input source — never
+    hard-coded in the automation.
+
     Attributes:
         pages: Successfully parsed pages (malformed pages excluded).
         errors: One entry per page block that failed to parse.
+        restaurant_name: The restaurant/tenant these pages belong to. ``None``
+            if the input did not declare one (the caller must then supply it).
     """
 
     pages: List[SEOPage] = field(default_factory=list)
     errors: List[PageParseError] = field(default_factory=list)
+    restaurant_name: Optional[str] = None
 
     @property
     def has_pages(self) -> bool:
@@ -49,6 +58,10 @@ class ParseOutcome:
     @property
     def has_errors(self) -> bool:
         return bool(self.errors)
+
+    @property
+    def has_restaurant(self) -> bool:
+        return bool(self.restaurant_name and self.restaurant_name.strip())
 
 
 class InputSource(ABC):

@@ -21,8 +21,19 @@ each delimited by explicit markers::
     FAQ Answer 2: Yes, cashew paste.
     === PAGE END ===
 
+An optional document-level header may precede the first page to declare which
+restaurant/tenant these pages belong to::
+
+    Restaurant: Renovo
+
+    === PAGE START ===
+    ...
+
 Design notes:
 * Fields use explicit labels (``Label: value``) — never positional parsing.
+* The restaurant name is carried dynamically from the input (document header or
+  an explicit override passed to the source). It is NEVER hard-coded in the
+  automation.
 * A field value may continue across following lines; a line that is not a
   recognised ``Label:`` is appended to the current field (so URLs/colons inside
   a Description don't break parsing).
@@ -77,6 +88,7 @@ _REQUIRED_SIMPLE_FIELDS = (
 _FAQ_QUESTION_RE = re.compile(r"^faq\s+question\s+(\d+)$", re.IGNORECASE)
 _FAQ_ANSWER_RE = re.compile(r"^faq\s+answer\s+(\d+)$", re.IGNORECASE)
 _LABEL_RE = re.compile(r"^([^:]+):(.*)$")
+_RESTAURANT_RE = re.compile(r"^restaurant\s*:\s*(.*)$", re.IGNORECASE)
 
 
 class LocalDocumentParseError(Exception):
@@ -84,10 +96,18 @@ class LocalDocumentParseError(Exception):
 
 
 class LocalDocumentSource(InputSource):
-    """Input source that reads SEO pages from a local structured document."""
+    """Input source that reads SEO pages from a local structured document.
 
-    def __init__(self, path: str):
+    Args:
+        path: Path to the structured ``.md`` / ``.txt`` document.
+        restaurant_name: Optional explicit restaurant/tenant override. When
+            provided it takes precedence over any ``Restaurant:`` header in the
+            document (useful when a batch driver already knows the tenant).
+    """
+
+    def __init__(self, path: str, restaurant_name: Optional[str] = None):
         self.path = Path(path)
+        self.restaurant_name = restaurant_name
 
     def load(self) -> ParseOutcome:
         if not self.path.exists():
@@ -100,7 +120,26 @@ class LocalDocumentSource(InputSource):
         except OSError as exc:
             raise InputError(f"Could not read input document: {exc}") from exc
 
-        return parse_text(text)
+        outcome = parse_text(text)
+        if self.restaurant_name and self.restaurant_name.strip():
+            outcome.restaurant_name = self.restaurant_name.strip()
+        return outcome
+
+
+def _extract_restaurant_name(text: str) -> Optional[str]:
+    """Read a document-level ``Restaurant:`` header from the preamble.
+
+    Only the text before the first page block is scanned, so a ``Restaurant:``
+    line inside a page body cannot be mistaken for the document header.
+    """
+    preamble = text.split(PAGE_START, 1)[0]
+    for raw_line in preamble.splitlines():
+        match = _RESTAURANT_RE.match(raw_line.strip())
+        if match:
+            value = match.group(1).strip()
+            if value:
+                return value
+    return None
 
 
 def _split_page_blocks(text: str) -> List[str]:
@@ -246,6 +285,7 @@ def parse_text(text: str) -> ParseOutcome:
     are returned in ``pages``.
     """
     outcome = ParseOutcome()
+    outcome.restaurant_name = _extract_restaurant_name(text)
 
     blocks = _split_page_blocks(text)
     for i, block in enumerate(blocks, 1):
@@ -258,6 +298,6 @@ def parse_text(text: str) -> ParseOutcome:
     return outcome
 
 
-def parse_file(path: str) -> ParseOutcome:
+def parse_file(path: str, restaurant_name: Optional[str] = None) -> ParseOutcome:
     """Convenience wrapper around :class:`LocalDocumentSource`."""
-    return LocalDocumentSource(path).load()
+    return LocalDocumentSource(path, restaurant_name=restaurant_name).load()
