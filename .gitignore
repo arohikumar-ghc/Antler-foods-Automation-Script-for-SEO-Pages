@@ -10,6 +10,9 @@ credentials.json
 token.json
 token.json.bak
 client_secret*.json
+service_account*.json
+*-sa.json
+*.sa.json
 
 # ---------------------------------------------------------------------------
 # Generated output
