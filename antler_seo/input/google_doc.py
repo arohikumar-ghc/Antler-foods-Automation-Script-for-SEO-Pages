@@ -24,6 +24,7 @@ unit-testable against fixture document JSON.
 from __future__ import annotations
 
 import re
+import time
 from typing import Optional
 
 from antler_seo.input.base import InputError, InputSource, ParseOutcome
@@ -93,25 +94,82 @@ def document_to_text(doc_json: dict) -> str:
     return "\n".join(lines)
 
 
+# Transient connection errors worth retrying. WinError 10054 ("An existing
+# connection was forcibly closed by the remote host") surfaces as
+# ConnectionResetError, a subclass of ConnectionError/OSError. HttpError
+# (404/permission) is NOT an OSError, so it is never retried here.
+_TRANSIENT_ERRORS = (ConnectionError, TimeoutError, OSError)
+
+
 class GoogleDocReader:
     """Fetches a Google Doc's text via a Google Docs service.
 
+    Transient connection failures (e.g. WinError 10054) are retried a bounded
+    number of times with exponential backoff; a fresh request is built on each
+    attempt. Non-transient errors (bad id, permission, 404) are not retried.
+
     Args:
         service: A Google Docs API service (from :func:`build_docs_service`).
+        max_attempts: Maximum fetch attempts (>= 1).
+        base_delay: Delay before the first retry, in seconds.
+        backoff_factor: Multiplier applied to the delay after each failure.
+        sleeper: Sleep function (injectable so tests run instantly).
     """
 
-    def __init__(self, service):
+    def __init__(self, service, *, max_attempts: int = 4, base_delay: float = 1.0,
+                 backoff_factor: float = 2.0, sleeper=time.sleep):
         self.service = service
+        self.max_attempts = max(1, int(max_attempts))
+        self.base_delay = base_delay
+        self.backoff_factor = backoff_factor
+        self._sleeper = sleeper
 
     def fetch_text(self, url_or_id: str) -> str:
-        """Fetch a document and return it as plain delimiter text."""
+        """Fetch a document and return it as plain delimiter text (with retry).
+
+        Raises:
+            DocError: On a non-transient error, or after exhausting retries for
+                transient connection failures.
+        """
         document_id = extract_document_id(url_or_id)
         logger.info("Fetching Google Doc %s", document_id)
-        try:
-            doc_json = self.service.documents().get(documentId=document_id).execute()
-        except Exception as exc:
-            raise DocError(f"Failed to read Google Doc {document_id}: {exc}") from exc
-        return document_to_text(doc_json)
+
+        delay = self.base_delay
+        last_exc = None
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                # Build a fresh request each attempt so a reset connection is
+                # retried cleanly.
+                doc_json = (
+                    self.service.documents().get(documentId=document_id).execute()
+                )
+                return document_to_text(doc_json)
+            except _TRANSIENT_ERRORS as exc:
+                last_exc = exc
+                if attempt < self.max_attempts:
+                    logger.warning(
+                        "Transient error reading Doc %s (attempt %d/%d): %r; "
+                        "retrying in %.1fs",
+                        document_id, attempt, self.max_attempts, exc, delay,
+                    )
+                    if delay > 0:
+                        self._sleeper(delay)
+                    delay *= self.backoff_factor
+                else:
+                    logger.error(
+                        "Giving up reading Doc %s after %d attempt(s)",
+                        document_id, self.max_attempts,
+                    )
+            except Exception as exc:
+                # Non-transient (e.g. HttpError 404 / permission) — do not retry.
+                raise DocError(
+                    f"Failed to read Google Doc {document_id}: {exc}"
+                ) from exc
+
+        raise DocError(
+            f"Failed to read Google Doc {document_id} after "
+            f"{self.max_attempts} attempt(s): {last_exc}"
+        ) from last_exc
 
 
 def build_docs_service(credentials):

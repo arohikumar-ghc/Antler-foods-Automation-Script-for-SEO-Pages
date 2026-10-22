@@ -6,10 +6,11 @@ python-dotenv==1.1.1
 # Browser automation
 playwright==1.56.0
 
-# Cloud input: Google Sheet + Google Doc (service-account auth).
+# Cloud input: Google Sheet + Google Doc (OAuth installed-app auth).
 # Imported lazily, so the default (non-live) test suite needs no network.
 google-api-python-client==2.189.0
 google-auth==2.43.0
+google-auth-oauthlib==1.2.1
 
 # Testing
 pytest==9.0.1

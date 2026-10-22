@@ -4,6 +4,7 @@ import pytest
 from antler_seo.input.base import InputError
 from antler_seo.input.google_doc import (
     DocError,
+    GoogleDocReader,
     GoogleDocSource,
     document_to_text,
     extract_document_id,
@@ -144,3 +145,76 @@ def test_source_unexpected_error_wrapped_as_input_error():
     )
     with pytest.raises(InputError):
         source.load()
+
+
+# --- GoogleDocReader bounded retry (transient connection failures) ---------
+
+
+class _FakeDocsService:
+    """Fake Docs service: documents().get(...).execute() runs a scripted
+    sequence of behaviors (exception instances raise; dicts return)."""
+
+    def __init__(self, behaviors):
+        self._behaviors = list(behaviors)
+        self.calls = 0
+
+    def documents(self):
+        return self
+
+    def get(self, documentId):  # noqa: N803 (match API signature)
+        self._doc_id = documentId
+        return self
+
+    def execute(self):
+        behavior = self._behaviors[self.calls]
+        self.calls += 1
+        if isinstance(behavior, Exception):
+            raise behavior
+        return behavior
+
+
+_GOOD_DOC = _doc_json(
+    ["=== PAGE START ===", "Page Name: A", "=== PAGE END ==="]
+)
+
+
+def _reset(msg="forcibly closed"):
+    # ConnectionResetError is how WinError 10054 surfaces in Python.
+    return ConnectionResetError(10054, msg)
+
+
+def test_fetch_text_retries_then_succeeds():
+    svc = _FakeDocsService([_reset(), _reset(), _GOOD_DOC])
+    reader = GoogleDocReader(svc, max_attempts=4, base_delay=0, sleeper=lambda s: None)
+    text = reader.fetch_text("DID_bare_1234567890xx")
+    assert "=== PAGE START ===" in text
+    assert svc.calls == 3  # two failures + one success
+
+
+def test_fetch_text_gives_up_after_max_attempts():
+    svc = _FakeDocsService([_reset(), _reset(), _reset(), _reset()])
+    reader = GoogleDocReader(svc, max_attempts=4, base_delay=0, sleeper=lambda s: None)
+    with pytest.raises(DocError) as exc:
+        reader.fetch_text("DID_bare_1234567890xx")
+    assert svc.calls == 4  # bounded: exactly max_attempts
+    assert "after 4 attempt" in str(exc.value)
+
+
+def test_fetch_text_non_transient_not_retried():
+    # A non-OSError (e.g. permission/404-style) must not be retried.
+    svc = _FakeDocsService([ValueError("not found"), _GOOD_DOC])
+    reader = GoogleDocReader(svc, max_attempts=4, base_delay=0, sleeper=lambda s: None)
+    with pytest.raises(DocError):
+        reader.fetch_text("DID_bare_1234567890xx")
+    assert svc.calls == 1  # no retry on non-transient error
+
+
+def test_fetch_text_backoff_is_bounded_and_sleeps_between_attempts():
+    delays = []
+    svc = _FakeDocsService([_reset(), _reset(), _GOOD_DOC])
+    reader = GoogleDocReader(
+        svc, max_attempts=4, base_delay=1.0, backoff_factor=2.0,
+        sleeper=lambda s: delays.append(s),
+    )
+    reader.fetch_text("DID_bare_1234567890xx")
+    assert delays == [1.0, 2.0]  # exponential backoff, one sleep per retry

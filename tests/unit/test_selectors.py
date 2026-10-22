@@ -74,6 +74,18 @@ def test_resolved_and_unresolved_partition():
     assert len(selectors.resolved()) >= 20
 
 
+def test_customizable_layout_is_split_right_image():
+    # The custom-section builder must select the 'Split Right Image' layout,
+    # never the builder's default ('Hero Overlay').
+    sel = selectors.get("content", "customizable_layout_split_right")
+    assert sel.value == "Split Right Image"
+    assert sel.strategy == "text"
+    assert sel.is_resolved
+    assert sel.verified  # locator identity + uniqueness confirmed live
+    assert not sel.needs_cleanup  # unique exact-text handle, not fragile
+    assert "hero overlay" not in (sel.value or "").lower()
+
+
 def test_no_credentials_in_registry():
     # Defensive: the registry must never contain credential-like values.
     blob = " ".join(

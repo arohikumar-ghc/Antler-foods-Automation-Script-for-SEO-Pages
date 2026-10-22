@@ -30,8 +30,15 @@ ENV_SEO_DIR = "ANTLER_SEO_DIR"
 ENV_LOGS_DIR = "ANTLER_LOGS_DIR"
 
 # Cloud input (Google) — optional; only needed for the Google Sheet/Doc source.
-ENV_GOOGLE_SA_KEY_FILE = "ANTLER_GOOGLE_SA_KEY_FILE"
+# OAuth installed-app flow: a client-config file + a cached user-token file.
+ENV_GOOGLE_CREDENTIALS_FILE = "ANTLER_GOOGLE_CREDENTIALS_FILE"
+ENV_GOOGLE_TOKEN_FILE = "ANTLER_GOOGLE_TOKEN_FILE"
 ENV_GOOGLE_SHEET_URL = "ANTLER_GOOGLE_SHEET_URL"
+
+# Defaults for the OAuth file paths (non-secret; the files themselves are
+# git-ignored and never committed).
+DEFAULT_GOOGLE_CREDENTIALS_FILE = "credentials.json"
+DEFAULT_GOOGLE_TOKEN_FILE = "token.json"
 
 # Required variables (no defaults; must be supplied by the environment).
 REQUIRED_VARS = (ENV_EMAIL, ENV_PASSWORD, ENV_BASE_URL)
@@ -76,8 +83,11 @@ class Config:
         slow_mo_ms: Delay between Playwright operations in ms (debugging aid).
         seo_files_dir: Directory holding local SEO input documents.
         logs_dir: Directory for log files.
-        google_sa_key_file: Path to a Google service-account JSON key (optional;
-            only needed for the Google Sheet/Doc cloud input source).
+        google_credentials_file: Path to the Google OAuth installed-app client
+            config (``credentials.json``). Only needed for the Google Sheet/Doc
+            cloud input source.
+        google_token_file: Path to the cached Google OAuth user token
+            (``token.json``). Created/refreshed by the auth layer.
         google_sheet_url: URL (or id) of the control-panel Google Sheet
             (optional; only needed for the cloud input source).
     """
@@ -90,7 +100,8 @@ class Config:
     slow_mo_ms: int = DEFAULT_SLOW_MO_MS
     seo_files_dir: str = DEFAULT_SEO_DIR
     logs_dir: str = DEFAULT_LOGS_DIR
-    google_sa_key_file: Optional[str] = None
+    google_credentials_file: str = DEFAULT_GOOGLE_CREDENTIALS_FILE
+    google_token_file: str = DEFAULT_GOOGLE_TOKEN_FILE
     google_sheet_url: Optional[str] = None
 
     @classmethod
@@ -158,8 +169,13 @@ class Config:
             slow_mo_ms=slow_mo_ms,
             seo_files_dir=(env.get(ENV_SEO_DIR) or DEFAULT_SEO_DIR).strip(),
             logs_dir=(env.get(ENV_LOGS_DIR) or DEFAULT_LOGS_DIR).strip(),
-            google_sa_key_file=(env.get(ENV_GOOGLE_SA_KEY_FILE) or "").strip()
-            or None,
+            google_credentials_file=(
+                env.get(ENV_GOOGLE_CREDENTIALS_FILE)
+                or DEFAULT_GOOGLE_CREDENTIALS_FILE
+            ).strip(),
+            google_token_file=(
+                env.get(ENV_GOOGLE_TOKEN_FILE) or DEFAULT_GOOGLE_TOKEN_FILE
+            ).strip(),
             google_sheet_url=(env.get(ENV_GOOGLE_SHEET_URL) or "").strip()
             or None,
         )
@@ -213,6 +229,7 @@ class Config:
             "slow_mo_ms": self.slow_mo_ms,
             "seo_files_dir": self.seo_files_dir,
             "logs_dir": self.logs_dir,
-            "google_sa_key_file": self.google_sa_key_file,
+            "google_credentials_file": self.google_credentials_file,
+            "google_token_file": self.google_token_file,
             "google_sheet_url": self.google_sheet_url,
         }

@@ -239,6 +239,16 @@ SELECTORS: Dict[str, Dict[str, Selector]] = {
             "text", "Customizable",
             fallback="div:nth-child(2) > .mb-3 > .flex > .h-4",
             verified=True, needs_cleanup=True),
+        "customizable_layout_split_right": _sel(
+            "customizable_layout_split_right",
+            "Customizable layout template 'Split Right Image' (subtitle "
+            "'Content on left, image on right'). Verified live: the layout card "
+            "exposes no role/test-id/aria attribute, so the card's exact label "
+            "text is the only reliable handle and is unique (count 1). Selected "
+            "explicitly because the builder otherwise keeps its default layout "
+            "'Hero Overlay'.",
+            "text", "Split Right Image",
+            verified=True, needs_cleanup=False),
         "customizable_headline": _sel(
             "customizable_headline", "Customizable: Headline (maps to title)",
             "placeholder", "Enter headline"),
@@ -250,6 +260,21 @@ SELECTORS: Dict[str, Dict[str, Selector]] = {
             "customizable_description",
             "Customizable: Description (maps to description)",
             "placeholder", "Enter description"),
+        "typography_scroll_animation_label": _sel(
+            "typography_scroll_animation_label",
+            "Typography & Animation group: the 'Page Scroll Animation' row "
+            "heading. Verified live: unique <h3> text (exact-leaf count 1); used "
+            "to anchor the row, since the toggle's <input> is visually hidden "
+            "(sr-only) and exposes no accessible name/role.",
+            "text", "Page Scroll Animation",
+            verified=True, needs_cleanup=False),
+        "typography_scroll_animation_input": _sel(
+            "typography_scroll_animation_input",
+            "The Page Scroll Animation toggle's control: a native "
+            "<input type=checkbox> (state = .checked; ON == checked). Verified "
+            "live: no role=switch/aria-checked; scoped within the label row.",
+            "css", "input[type='checkbox']",
+            verified=True, needs_cleanup=False),
         "customizable_save": _sel(
             "customizable_save", "Saves the Customizable section",
             "role", 'button[name="Save Custom Section Settings"]'),
